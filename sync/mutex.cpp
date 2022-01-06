@@ -13,14 +13,14 @@ namespace syncobj {
 
 void Mutex::lock() {
     while (true) {
-        uint32_t expected = FREE;
-        if (state_.compare_exchange_strong(expected, LOCKED,
+        uint32_t expected = STATE_FREE;
+        if (state_.compare_exchange_strong(expected, STATE_LOCKED,
                                            std::memory_order::acquire,
                                            std::memory_order::relaxed)) {
             return;
         }
 
-        if (util::futex(state_, FUTEX_WAIT, LOCKED, nullptr) < 0 &&
+        if (util::futex(state_, FUTEX_WAIT, STATE_LOCKED, nullptr) < 0 &&
             errno != EAGAIN) {
             util::throw_last_error("futex wait failed");
         }
@@ -28,7 +28,7 @@ void Mutex::lock() {
 }
 
 void Mutex::unlock() {
-    state_.store(FREE, std::memory_order::release);
+    state_.store(STATE_FREE, std::memory_order::release);
     if (util::futex(state_, FUTEX_WAKE, 1) < 0) {
         util::throw_last_error("futex wake failed");
     }

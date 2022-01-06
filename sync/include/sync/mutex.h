@@ -19,10 +19,10 @@ public:
 private:
     friend class CondVar;
 
-    static constexpr uint32_t FREE = 0;
-    static constexpr uint32_t LOCKED = 1;
+    static constexpr uint32_t STATE_FREE = 0;
+    static constexpr uint32_t STATE_LOCKED = 1;
 
-    std::atomic<uint32_t> state_{FREE};
+    std::atomic<uint32_t> state_{STATE_FREE};
 };
 
 } // namespace syncobj
