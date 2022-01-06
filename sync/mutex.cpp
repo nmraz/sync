@@ -1,4 +1,4 @@
-#include "mutex.h"
+#include "sync/mutex.h"
 
 #include <linux/futex.h>
 #include <sys/syscall.h>
