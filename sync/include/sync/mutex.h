@@ -11,7 +11,8 @@ public:
     void unlock();
 
 private:
-    template <typename... Args> void futex_state(Args... args);
+    template <typename... Args>
+    [[nodiscard]] int futex_state(int op, Args... args);
 
     std::atomic<uint32_t> state_{0};
 };

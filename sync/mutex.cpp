@@ -3,9 +3,11 @@
 #include <linux/futex.h>
 #include <sys/syscall.h>
 #include <unistd.h>
+
 #include <atomic>
 #include <cerrno>
-#include <system_error>
+
+#include "util.h"
 
 namespace syncobj {
 namespace {
@@ -24,19 +26,22 @@ void Mutex::lock() {
             return;
         }
 
-        futex_state(FUTEX_WAIT, LOCKED);
+        if (futex_state(FUTEX_WAIT, LOCKED, nullptr) < 0 && errno != EAGAIN) {
+            util::throw_last_error("futex wait failed");
+        }
     }
 }
 
 void Mutex::unlock() {
     state_.store(FREE, std::memory_order::release);
-    futex_state(FUTEX_WAKE, 1);
+    if (futex_state(FUTEX_WAKE, 1) < 0) {
+        util::throw_last_error("futex wake failed");
+    }
 }
 
-template <typename... Args> void Mutex::futex_state(Args... args) {
-    if (syscall(SYS_futex, reinterpret_cast<uint32_t*>(&state_), args...) < 0) {
-        throw std::system_error(errno, std::system_category(), "futex failed");
-    }
+template <typename... Args> int Mutex::futex_state(int op, Args... args) {
+    return syscall(SYS_futex, reinterpret_cast<uint32_t*>(&state_),
+                   op | FUTEX_PRIVATE_FLAG, args...);
 }
 
 } // namespace syncobj
