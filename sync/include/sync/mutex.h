@@ -17,10 +17,12 @@ public:
     void unlock();
 
 private:
-    template <typename... Args>
-    [[nodiscard]] int futex_state(int op, Args... args);
+    friend class CondVar;
 
-    std::atomic<uint32_t> state_{0};
+    static constexpr uint32_t FREE = 0;
+    static constexpr uint32_t LOCKED = 1;
+
+    std::atomic<uint32_t> state_{FREE};
 };
 
 } // namespace syncobj

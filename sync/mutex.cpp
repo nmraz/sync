@@ -10,12 +10,6 @@
 #include "util.h"
 
 namespace syncobj {
-namespace {
-
-constexpr uint32_t FREE = 0;
-constexpr uint32_t LOCKED = 1;
-
-} // namespace
 
 void Mutex::lock() {
     while (true) {
