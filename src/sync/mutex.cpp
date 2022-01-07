@@ -25,7 +25,7 @@ void Mutex::lock_slow() {
             return;
         }
 
-        if (cur_state == STATE_LOCKED_WAITERS) {
+        if (cur_state == STATE_LOCKED_CHECK_WAITERS) {
             // Syncronize-with (potential) release store publishing `waiters_`.
             std::atomic_thread_fence(std::memory_order::acquire);
             if (waiters_.load(std::memory_order::relaxed) > 0) {
@@ -50,7 +50,7 @@ void Mutex::lock_slow() {
         // we must still remember to check other waiters upon unlock.
         // Conservatively assume that we may have other waiters here; the exact
         // status is tracked in `waiters_`.
-        desired = STATE_LOCKED_WAITERS;
+        desired = STATE_LOCKED_CHECK_WAITERS;
 
         // Surround the wait state with appropriate increments and
         // decrements of `waiters_`. These results are published to
@@ -75,18 +75,20 @@ void Mutex::lock_slow() {
         bool can_sleep = false;
 
         expected = state_.load(std::memory_order::relaxed);
-        if (expected == STATE_LOCKED || expected == STATE_LOCKED_WAITERS) {
+        if (expected == STATE_LOCKED ||
+            expected == STATE_LOCKED_CHECK_WAITERS) {
             // Yes, the CAS really is necessary even when `state_` is already
             // `STATE_LOCKED_WAITERS`: the release write here synchronizes-with
             // the fence in `unlock_slow()` and makes the write to `waiters_`
             // visible.
             can_sleep = state_.compare_exchange_weak(
-                expected, STATE_LOCKED_WAITERS, std::memory_order::release);
+                expected, STATE_LOCKED_CHECK_WAITERS,
+                std::memory_order::release);
         }
 
         if (can_sleep) {
-            if (util::futex(state_, FUTEX_WAIT, STATE_LOCKED_WAITERS, nullptr) <
-                    0 &&
+            if (util::futex(state_, FUTEX_WAIT, STATE_LOCKED_CHECK_WAITERS,
+                            nullptr) < 0 &&
                 errno != EAGAIN) {
                 util::throw_last_error("futex wait failed");
             }
@@ -102,7 +104,7 @@ void Mutex::unlock_slow() {
     uint32_t prev_state =
         state_.exchange(STATE_UNLOCKING, std::memory_order::relaxed);
 
-    if (prev_state == STATE_LOCKED_WAITERS) {
+    if (prev_state == STATE_LOCKED_CHECK_WAITERS) {
         // Syncronize-with (potential) release store publishing `waiters_`.
         std::atomic_thread_fence(std::memory_order::acquire);
         should_wake = waiters_.load(std::memory_order::relaxed) > 0;

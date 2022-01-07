@@ -42,7 +42,7 @@ private:
 
     static constexpr uint32_t STATE_UNLOCKED = 0;
     static constexpr uint32_t STATE_LOCKED = 1;
-    static constexpr uint32_t STATE_LOCKED_WAITERS = 2;
+    static constexpr uint32_t STATE_LOCKED_CHECK_WAITERS = 2;
     static constexpr uint32_t STATE_UNLOCKING = 3;
 
     std::atomic<uint32_t> state_{STATE_UNLOCKED};
