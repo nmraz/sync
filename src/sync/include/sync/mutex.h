@@ -13,7 +13,17 @@ public:
     Mutex& operator=(const Mutex&) = delete;
     Mutex& operator=(Mutex&&) = delete;
 
-    void lock();
+    void lock() {
+        uint32_t expected = STATE_FREE;
+        if (state_.compare_exchange_weak(expected, STATE_LOCKED,
+                                         std::memory_order::acquire,
+                                         std::memory_order::relaxed)) {
+            return;
+        }
+
+        lock_slow();
+    }
+
     void unlock();
 
 private:
