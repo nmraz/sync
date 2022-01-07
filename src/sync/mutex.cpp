@@ -26,7 +26,11 @@ void Mutex::lock_slow() {
         }
 
         if (cur_state == STATE_LOCKED_WAITERS) {
-            break;
+            // Syncronize-with (potential) release store publishing `waiters_`.
+            std::atomic_thread_fence(std::memory_order::acquire);
+            if (waiters_.load(std::memory_order::relaxed) > 0) {
+                break;
+            }
         }
 
         std::this_thread::yield();
