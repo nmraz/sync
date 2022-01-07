@@ -2,10 +2,12 @@
 #include <thread>
 #include <vector>
 
-template <typename M> void inc_many(int& val, M& mutex) {
+template <typename M>
+void inc_many(int& val, std::vector<int>& vals, M& mutex) {
     for (int i = 0; i < 1000000; i++) {
         mutex.lock();
         val++;
+        vals.push_back(val);
         mutex.unlock();
     }
 }
@@ -15,14 +17,16 @@ template <typename M> void run_bench() {
     int val = 0;
 
     std::vector<std::thread> threads;
+    std::vector<int> vals;
 
-    for (int i = 0; i < 8; i++) {
-        threads.emplace_back(inc_many<M>, std::ref(val), std::ref(mutex));
+    for (int i = 0; i < 10; i++) {
+        threads.emplace_back(inc_many<M>, std::ref(val), std::ref(vals),
+                             std::ref(mutex));
     }
 
     for (auto& thread : threads) {
         thread.join();
     }
 
-    std::cout << val << '\n';
+    std::cout << val << ' ' << vals.size() << ' ' << '\n';
 }
