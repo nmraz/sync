@@ -5,8 +5,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 add_compile_options(-Wall -Wextra)
 
-add_library(sync sync/mutex.cpp sync/cond_var.cpp sync/util.cpp)
-target_include_directories(sync PUBLIC sync/include)
+add_library(sync src/sync/mutex.cpp src/sync/cond_var.cpp src/sync/util.cpp)
+target_include_directories(sync PUBLIC src/sync/include)
 
-add_executable(main main/main.cpp)
+add_executable(main src/bin/main.cpp)
 target_link_libraries(main sync)
