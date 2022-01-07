@@ -13,31 +13,6 @@
 
 namespace syncobj {
 
-void Mutex::unlock_slow() {
-    bool should_wake = false;
-
-    uint32_t prev_state =
-        state_.exchange(STATE_UNLOCKING, std::memory_order::relaxed);
-
-    if (prev_state == STATE_LOCKED_WAITERS) {
-        // Syncronize-with (potential) release store publishing `waiters_`.
-        std::atomic_thread_fence(std::memory_order::acquire);
-        should_wake = waiters_.load(std::memory_order::relaxed) > 0;
-    }
-
-    state_.store(STATE_FREE, std::memory_order::release);
-
-    // Note: at this point the lock has been unlocked, meaning that someone else
-    // could have stepped in and destroyed us! `this` must not be accessed
-    // beyond this point.
-
-    if (should_wake) {
-        if (util::futex(state_, FUTEX_WAKE, 1) < 0) {
-            util::throw_last_error("futex wake failed");
-        }
-    }
-}
-
 void Mutex::lock_slow() {
     constexpr int SPIN_LIMIT = 40;
 
@@ -61,20 +36,13 @@ void Mutex::lock_slow() {
         std::this_thread::yield();
     }
 
-    uint32_t desired = STATE_LOCKED;
-
     while (true) {
         uint32_t expected = STATE_FREE;
-        if (state_.compare_exchange_weak(expected, desired,
+        if (state_.compare_exchange_weak(expected, STATE_LOCKED,
                                          std::memory_order::acquire,
                                          std::memory_order::relaxed)) {
             return;
         }
-
-        // From now on, we try to lock into a "locked with waiters"
-        // state as there may be other waiters joining (the accurate number is
-        // tracked in `waiters_`); we need to check this upon unlock.
-        desired = STATE_LOCKED_WAITERS;
 
         // Surround the wait state with appropriate increments and
         // decrements of `waiters_`. These results are published to
@@ -108,6 +76,31 @@ void Mutex::lock_slow() {
         }
 
         waiters_.fetch_sub(1, std::memory_order::relaxed);
+    }
+}
+
+void Mutex::unlock_slow() {
+    bool should_wake = false;
+
+    uint32_t prev_state =
+        state_.exchange(STATE_UNLOCKING, std::memory_order::relaxed);
+
+    if (prev_state == STATE_LOCKED_WAITERS) {
+        // Syncronize-with (potential) release store publishing `waiters_`.
+        std::atomic_thread_fence(std::memory_order::acquire);
+        should_wake = waiters_.load(std::memory_order::relaxed) > 0;
+    }
+
+    state_.store(STATE_FREE, std::memory_order::release);
+
+    // Note: at this point the lock has been unlocked, meaning that someone else
+    // could have stepped in and destroyed us! `this` must not be accessed
+    // beyond this point.
+
+    if (should_wake) {
+        if (util::futex(state_, FUTEX_WAKE, 1) < 0) {
+            util::throw_last_error("futex wake failed");
+        }
     }
 }
 
