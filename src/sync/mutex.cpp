@@ -55,17 +55,18 @@ void Mutex::lock_slow() {
         // Surround the wait state with appropriate increments and
         // decrements of `waiters_`. These results are published to
         // `unlock()` when we successfully set our state to
-        // `STATE_LOCKED_WAITERS` below.
+        // `STATE_LOCKED_CHECK_WAITERS` below.
 
         waiters_.fetch_add(1, std::memory_order::relaxed);
 
-        // At this point, we want to get into the `STATE_LOCKED_WAITERS` state
-        // for the `futex` call below; it doesn't matter if we were already here
-        // or if we got here from `STATE_LOCKED`. What _does_ matter is that the
-        // sleep should be avoided if we came from a different state, as the
-        // mutex is either unlocked or being unlocked now.
+        // At this point, we want to get into the `STATE_LOCKED_CHECK_WAITERS`
+        // state for the `futex` call below; it doesn't matter if we were
+        // already here or if we got here from `STATE_LOCKED`. What _does_
+        // matter is that the sleep should be avoided if we came from a
+        // different state, as the mutex is either unlocked or being unlocked
+        // now.
         //
-        // The transition to `STATE_LOCKED_WAITERS` also has the important
+        // The transition to `STATE_LOCKED_CHECK_WAITERS` also has the important
         // side-effect of publishing our increment of `waiters_` (the CAS is
         // performed as a release store, and also participates in the release
         // sequences of other CASes where necessary); we can only sleep if we
@@ -78,9 +79,9 @@ void Mutex::lock_slow() {
         if (expected == STATE_LOCKED ||
             expected == STATE_LOCKED_CHECK_WAITERS) {
             // Yes, the CAS really is necessary even when `state_` is already
-            // `STATE_LOCKED_WAITERS`: the release write here synchronizes-with
-            // the fence in `unlock_slow()` and makes the write to `waiters_`
-            // visible.
+            // `STATE_LOCKED_CHECK_WAITERS`: the release write here
+            // synchronizes-with the fence in `unlock_slow()` and makes the
+            // write to `waiters_` visible.
             can_sleep = state_.compare_exchange_weak(
                 expected, STATE_LOCKED_CHECK_WAITERS,
                 std::memory_order::release);
