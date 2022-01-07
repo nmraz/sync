@@ -76,6 +76,10 @@ void Mutex::lock_slow() {
 
         expected = state_.load(std::memory_order::relaxed);
         if (expected == STATE_LOCKED || expected == STATE_LOCKED_WAITERS) {
+            // Yes, the CAS really is necessary even when `state_` is already
+            // `STATE_LOCKED_WAITERS`: the release write here synchronizes-with
+            // the fence in `unlock_slow()` and makes the write to `waiters_`
+            // visible.
             can_sleep = state_.compare_exchange_weak(
                 expected, STATE_LOCKED_WAITERS, std::memory_order::release);
         }
