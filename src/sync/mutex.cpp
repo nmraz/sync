@@ -111,10 +111,12 @@ void Mutex::unlock_slow() {
     state_.store(STATE_UNLOCKED, std::memory_order::release);
 
     // Note: at this point the lock has been unlocked, meaning that someone else
-    // could have stepped in and destroyed us! `this` must not be accessed
+    // could have stepped in and destroyed us! `*this` must not be accessed
     // beyond this point.
 
     if (should_wake) {
+        // Note: this doesn't actually access `*this` as the `futex` wake call
+        // only uses the pointer as a key.
         if (util::futex(state_, FUTEX_WAKE, 1) < 0) {
             util::throw_last_error("futex wake failed");
         }
