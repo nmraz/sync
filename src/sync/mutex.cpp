@@ -36,13 +36,21 @@ void Mutex::lock_slow() {
         std::this_thread::yield();
     }
 
+    uint32_t desired = STATE_LOCKED;
+
     while (true) {
         uint32_t expected = STATE_FREE;
-        if (state_.compare_exchange_weak(expected, STATE_LOCKED,
+        if (state_.compare_exchange_weak(expected, desired,
                                          std::memory_order::acquire,
                                          std::memory_order::relaxed)) {
             return;
         }
+
+        // If we're not the first waiter (but end up grabbing the lock first),
+        // we must still remember to check other waiters upon unlock.
+        // Conservatively assume that we may have other waiters here; the exact
+        // status is tracked in `waiters_`.
+        desired = STATE_LOCKED_WAITERS;
 
         // Surround the wait state with appropriate increments and
         // decrements of `waiters_`. These results are published to
@@ -56,18 +64,23 @@ void Mutex::lock_slow() {
         // or if we got here from `STATE_LOCKED`. What _does_ matter is that the
         // sleep should be avoided if we came from a different state, as the
         // mutex is either unlocked or being unlocked now.
-        expected = STATE_LOCKED;
-        state_.compare_exchange_weak(expected, STATE_LOCKED_WAITERS,
-                                     std::memory_order::release);
+        //
+        // The transition to `STATE_LOCKED_WAITERS` also has the important
+        // side-effect of publishing our increment of `waiters_` (the CAS is
+        // performed as a release store, and also participates in the release
+        // sequences of other CASes where necessary); we can only sleep if we
+        // know that the publication has succeeded and that we will definitely
+        // be woken up.
 
-        // Optimization: avoid the syscall if we think it's going to fail. In
-        // principle, several other threads could have stepped in and gotten us
-        // back into a `STATE_LOCKED_WAITERS`, but better to try to grab the
-        // lock ourselves if we think it's going to be free.
-        bool should_sleep =
-            expected == STATE_LOCKED || expected == STATE_LOCKED_WAITERS;
+        bool can_sleep = false;
 
-        if (should_sleep) {
+        expected = state_.load(std::memory_order::relaxed);
+        if (expected == STATE_LOCKED || expected == STATE_LOCKED_WAITERS) {
+            can_sleep = state_.compare_exchange_weak(
+                expected, STATE_LOCKED_WAITERS, std::memory_order::release);
+        }
+
+        if (can_sleep) {
             if (util::futex(state_, FUTEX_WAIT, STATE_LOCKED_WAITERS, nullptr) <
                     0 &&
                 errno != EAGAIN) {
