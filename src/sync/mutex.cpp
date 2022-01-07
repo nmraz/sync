@@ -17,7 +17,7 @@ void Mutex::unlock() {
     uint32_t prev_state =
         state_.exchange(STATE_FREE, std::memory_order::release);
 
-    if (prev_state & STATE_WAITERS) {
+    if (prev_state == STATE_LOCKED_WAITERS) {
         if (util::futex(state_, FUTEX_WAKE, 1) < 0) {
             util::throw_last_error("futex wake failed");
         }
