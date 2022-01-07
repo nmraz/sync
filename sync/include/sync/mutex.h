@@ -19,8 +19,13 @@ public:
 private:
     friend class CondVar;
 
+    void lock_slow();
+
     static constexpr uint32_t STATE_FREE = 0;
     static constexpr uint32_t STATE_LOCKED = 1;
+    static constexpr uint32_t STATE_WAITERS = 2;
+    static constexpr uint32_t STATE_LOCKED_WAITERS =
+        STATE_LOCKED | STATE_WAITERS;
 
     std::atomic<uint32_t> state_{STATE_FREE};
 };

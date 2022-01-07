@@ -7,40 +7,78 @@
 #include <atomic>
 #include <cerrno>
 #include <cstddef>
+#include <thread>
 
 #include "util.h"
 
 namespace syncobj {
 
 void Mutex::lock() {
-    constexpr size_t SPIN_LIMIT = 40;
+    uint32_t expected = STATE_FREE;
+    if (state_.compare_exchange_weak(expected, STATE_LOCKED,
+                                     std::memory_order::acquire,
+                                     std::memory_order::relaxed)) {
+        return;
+    }
 
-    size_t spin_count = 0;
+    lock_slow();
+}
+
+void Mutex::unlock() {
+    uint32_t prev_state =
+        state_.exchange(STATE_FREE, std::memory_order::release);
+
+    if (prev_state & STATE_WAITERS) {
+        if (util::futex(state_, FUTEX_WAKE, 1) < 0) {
+            util::throw_last_error("futex wake failed");
+        }
+    }
+}
+
+void Mutex::lock_slow() {
+    constexpr int SPIN_LIMIT = 40;
+
+    uint32_t cur_state = state_.load(std::memory_order::relaxed);
+
+    // Start by spinning a bit, as long as no one else is sleeping on the lock
+    // (in which case it would be beneficial to join the queue ourselves).
+    for (int spin = 0; spin < SPIN_LIMIT && cur_state != STATE_LOCKED_WAITERS;
+         spin++) {
+        if (cur_state == STATE_FREE &&
+            state_.compare_exchange_weak(cur_state, STATE_LOCKED,
+                                         std::memory_order::acquire,
+                                         std::memory_order::relaxed)) {
+            return;
+        }
+    }
+
+    uint32_t desired = STATE_LOCKED;
 
     while (true) {
         uint32_t expected = STATE_FREE;
-        if (state_.compare_exchange_weak(expected, STATE_LOCKED,
+        if (state_.compare_exchange_weak(expected, desired,
                                          std::memory_order::acquire,
                                          std::memory_order::relaxed)) {
             return;
         }
 
-        if (spin_count < SPIN_LIMIT) {
-            spin_count++;
-            continue;
-        }
+        // From now on, we try to lock into a "locked with waiters" state,
+        // though we don't actually know whether any other waiters will join.
+        // This may be spurious, but the net result is just that unlock becomes
+        // slightly less efficient.
+        desired = STATE_LOCKED_WAITERS;
 
-        if (util::futex(state_, FUTEX_WAIT, STATE_LOCKED, nullptr) < 0 &&
+        // If this fails for some reason, our futex call won't sleep and we'll
+        // end up trying again anyway.
+        expected = STATE_LOCKED;
+        state_.compare_exchange_weak(expected, STATE_LOCKED_WAITERS,
+                                     std::memory_order::relaxed);
+
+        if (util::futex(state_, FUTEX_WAIT, STATE_LOCKED_WAITERS, nullptr) <
+                0 &&
             errno != EAGAIN) {
             util::throw_last_error("futex wait failed");
         }
-    }
-}
-
-void Mutex::unlock() {
-    state_.store(STATE_FREE, std::memory_order::release);
-    if (util::futex(state_, FUTEX_WAKE, 1) < 0) {
-        util::throw_last_error("futex wake failed");
     }
 }
 
