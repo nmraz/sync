@@ -1,14 +1,8 @@
-#include <sync/mutex.h>
-
-#include <functional>
 #include <iostream>
-#include <mutex>
 #include <thread>
 #include <vector>
 
-using MyMutex = syncobj::Mutex;
-
-void inc_many(int& val, MyMutex& mutex) {
+template <typename M> void inc_many(int& val, M& mutex) {
     for (int i = 0; i < 1000000; i++) {
         mutex.lock();
         val++;
@@ -16,14 +10,14 @@ void inc_many(int& val, MyMutex& mutex) {
     }
 }
 
-int main() {
-    MyMutex mutex;
+template <typename M> void run_bench() {
+    M mutex;
     int val = 0;
 
     std::vector<std::thread> threads;
 
     for (int i = 0; i < 8; i++) {
-        threads.emplace_back(inc_many, std::ref(val), std::ref(mutex));
+        threads.emplace_back(inc_many<M>, std::ref(val), std::ref(mutex));
     }
 
     for (auto& thread : threads) {
@@ -31,6 +25,4 @@ int main() {
     }
 
     std::cout << val << '\n';
-
-    return 0;
 }
