@@ -22,7 +22,7 @@ void Mutex::lock_slow() {
     // the lock (in which case it would be beneficial to join the queue
     // ourselves).
     for (int spin = 0; spin < SPIN_LIMIT; spin++) {
-        if (cur_state == STATE_FREE &&
+        if (cur_state == STATE_UNLOCKED &&
             state_.compare_exchange_weak(cur_state, STATE_LOCKED,
                                          std::memory_order::acquire,
                                          std::memory_order::relaxed)) {
@@ -39,7 +39,7 @@ void Mutex::lock_slow() {
     uint32_t desired = STATE_LOCKED;
 
     while (true) {
-        uint32_t expected = STATE_FREE;
+        uint32_t expected = STATE_UNLOCKED;
         if (state_.compare_exchange_weak(expected, desired,
                                          std::memory_order::acquire,
                                          std::memory_order::relaxed)) {
@@ -108,7 +108,7 @@ void Mutex::unlock_slow() {
         should_wake = waiters_.load(std::memory_order::relaxed) > 0;
     }
 
-    state_.store(STATE_FREE, std::memory_order::release);
+    state_.store(STATE_UNLOCKED, std::memory_order::release);
 
     // Note: at this point the lock has been unlocked, meaning that someone else
     // could have stepped in and destroyed us! `this` must not be accessed
