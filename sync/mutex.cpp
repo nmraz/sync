@@ -42,14 +42,19 @@ void Mutex::lock_slow() {
 
     // Start by spinning a bit, as long as no one else is sleeping on the lock
     // (in which case it would be beneficial to join the queue ourselves).
-    for (int spin = 0; spin < SPIN_LIMIT && cur_state != STATE_LOCKED_WAITERS;
-         spin++) {
+    for (int spin = 0; spin < SPIN_LIMIT; spin++) {
         if (cur_state == STATE_FREE &&
             state_.compare_exchange_weak(cur_state, STATE_LOCKED,
                                          std::memory_order::acquire,
                                          std::memory_order::relaxed)) {
             return;
         }
+
+        if (cur_state == STATE_LOCKED_WAITERS) {
+            break;
+        }
+
+        std::this_thread::yield();
     }
 
     uint32_t desired = STATE_LOCKED;
