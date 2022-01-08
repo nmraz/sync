@@ -1,4 +1,5 @@
 #include <atomic>
+#include <mutex>
 
 #include "sync/mutex.h"
 
@@ -8,12 +9,14 @@ class CondVar {
 public:
     constexpr CondVar() = default;
 
-    void wait(Mutex& mutex);
+    void wait(std::unique_lock<Mutex>& lock);
     void wake_one();
     void wake_all();
 
 private:
-    std::atomic<uint32_t> state_{0};
+    void wake(uint32_t count);
+
+    std::atomic<uint32_t> seq_{0};
 };
 
 } // namespace syncobj
