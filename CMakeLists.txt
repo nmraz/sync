@@ -15,4 +15,6 @@ endfunction()
 
 add_bin(my_mutex_bench)
 add_bin(std_mutex_bench)
-add_bin(sleep_bench)
+
+add_bin(my_sleep_bench)
+add_bin(std_sleep_bench)

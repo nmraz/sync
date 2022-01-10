@@ -2,12 +2,10 @@
 #include <thread>
 #include <vector>
 
-#include "sync/mutex.h"
+template <typename M> void run_sleep_bench() {
+    using namespace std::chrono_literals;
 
-using namespace std::chrono_literals;
-
-int main() {
-    syncobj::Mutex mutex;
+    M mutex;
     std::vector<std::thread> threads;
 
     for (int i = 0; i < 10; i++) {
@@ -21,6 +19,4 @@ int main() {
     for (auto& thread : threads) {
         thread.join();
     }
-
-    return 0;
 }
