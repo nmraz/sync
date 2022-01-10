@@ -26,11 +26,11 @@ void Mutex::lock_slow() {
         }
 
         if (cur_state == STATE_LOCKED_CHECK_WAITERS) {
-            // Syncronize-with (potential) release store publishing `waiters_`.
-            std::atomic_thread_fence(std::memory_order::acquire);
-            if (waiters_.load(std::memory_order::relaxed) > 0) {
-                break;
-            }
+            // Skip the spin loop if there may be waiters; accurately
+            // determining whether there are actually waiters requires blocking
+            // waiter updates and reading the waiter value, defeating the
+            // purpose of a fast-path spin loop.
+            break;
         }
 
         std::this_thread::yield();
@@ -102,12 +102,19 @@ void Mutex::lock_slow() {
 void Mutex::unlock_slow() {
     bool should_wake = false;
 
+    // If we've gotten here, there are probably waiters that need to be woken
+    // up. This exchange guarantees that no one will try to enter a wait state
+    // while we're inspecting the waiter count, which could result in lost
+    // wakes.
+    //
+    // It also synchronizes-with the (potential) release store publishing
+    // `waiters_`. In practice, the value of `waiters_` read below may may be
+    // higher than strictly necessary (if a decrement has not yet become
+    // visible), but it will never be too low.
     uint32_t prev_state =
-        state_.exchange(STATE_UNLOCKING, std::memory_order::relaxed);
+        state_.exchange(STATE_UNLOCKING, std::memory_order::acquire);
 
     if (prev_state == STATE_LOCKED_CHECK_WAITERS) {
-        // Syncronize-with (potential) release store publishing `waiters_`.
-        std::atomic_thread_fence(std::memory_order::acquire);
         should_wake = waiters_.load(std::memory_order::relaxed) > 0;
     }
 
